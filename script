@@ -1,4 +1,44 @@
--- Awaaga GUI - Full Featured Version
+local function unloadGUI()
+    if noclipConnection then
+        noclipConnection:Disconnect()
+    end
+    
+    if spinConnection then
+        spinConnection:Disconnect()
+    end
+    
+    if bounceConnection then
+        bounceConnection:Disconnect()
+    end
+    
+    if currentHighlight then
+        currentHighlight:Destroy()
+    end
+    
+    for targetPlayer, _ in pairs(espObjects) do
+        removeESP(targetPlayer)
+    end
+    
+    -- Restore X-Ray transparencies
+    if xrayEnabled then
+        for obj, originalTransparency in pairs(xrayParts) do
+            if obj and obj.Parent then
+                obj.Transparency = originalTransparency
+            end
+        end
+        xrayParts = {}
+    end
+    
+    -- Restore character stats
+    if player.Character then
+        local humanoid = player.Character:FindFirstChild("Humanoid")
+        if humanoid then
+            humanoid.WalkSpeed = 16
+            humanoid.JumpPower = 50
+        end
+    end
+    
+    if invisibleEnabled and player.Character then-- Awaaga GUI - Full Featured Version
 -- Wait for game to load
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -31,6 +71,12 @@ local xrayParts = {}
 local antiKnockbackEnabled = false
 local antiKnockbackConnection = nil
 local currentTab = "Player"
+local spinEnabled = false
+local spinConnection = nil
+local bounceEnabled = false
+local bounceConnection = nil
+local speedBoost = 16
+local jumpBoost = 50
 
 -- Create GUI
 local screenGui = Instance.new("ScreenGui")
@@ -154,8 +200,8 @@ end
 
 -- Main Frame
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 240, 0, 450)
-mainFrame.Position = UDim2.new(0, -250, 0.5, -225)
+mainFrame.Size = UDim2.new(0, 320, 0, 450)
+mainFrame.Position = UDim2.new(0, -330, 0.5, -225)
 mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
@@ -241,7 +287,7 @@ tabContainer.Parent = mainFrame
 
 -- Player Tab
 local playerTab = Instance.new("TextButton")
-playerTab.Size = UDim2.new(0.48, 0, 1, 0)
+playerTab.Size = UDim2.new(0.31, 0, 1, 0)
 playerTab.Position = UDim2.new(0, 0, 0, 0)
 playerTab.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
 playerTab.BorderSizePixel = 0
@@ -258,8 +304,8 @@ playerTabCorner.Parent = playerTab
 
 -- Visual Tab
 local visualTab = Instance.new("TextButton")
-visualTab.Size = UDim2.new(0.48, 0, 1, 0)
-visualTab.Position = UDim2.new(0.52, 0, 0, 0)
+visualTab.Size = UDim2.new(0.31, 0, 1, 0)
+visualTab.Position = UDim2.new(0.345, 0, 0, 0)
 visualTab.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
 visualTab.BorderSizePixel = 0
 visualTab.Text = "Visual"
@@ -272,6 +318,23 @@ visualTab.Parent = tabContainer
 local visualTabCorner = Instance.new("UICorner")
 visualTabCorner.CornerRadius = UDim.new(0, 8)
 visualTabCorner.Parent = visualTab
+
+-- Fun Tab
+local funTab = Instance.new("TextButton")
+funTab.Size = UDim2.new(0.31, 0, 1, 0)
+funTab.Position = UDim2.new(0.69, 0, 0, 0)
+funTab.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+funTab.BorderSizePixel = 0
+funTab.Text = "Fun"
+funTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+funTab.Font = Enum.Font.GothamBold
+funTab.TextSize = 14
+funTab.AutoButtonColor = false
+funTab.Parent = tabContainer
+
+local funTabCorner = Instance.new("UICorner")
+funTabCorner.CornerRadius = UDim.new(0, 8)
+funTabCorner.Parent = funTab
 
 -- Content Frame
 local contentFrame = Instance.new("Frame")
@@ -294,6 +357,13 @@ visualContent.Size = UDim2.new(1, 0, 1, 0)
 visualContent.BackgroundTransparency = 1
 visualContent.Visible = false
 visualContent.Parent = contentFrame
+
+-- Fun Content
+local funContent = Instance.new("Frame")
+funContent.Size = UDim2.new(1, 0, 1, 0)
+funContent.BackgroundTransparency = 1
+funContent.Visible = false
+funContent.Parent = contentFrame
 
 -- Confirmation Dialog
 local confirmFrame = Instance.new("Frame")
@@ -536,6 +606,11 @@ local function createSwitch(parent, position, labelText, description)
         TweenService:Create(container, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 50)}):Play()
     end)
     
+    -- Make switch itself also clickable
+    switchButton.MouseButton1Click:Connect(function()
+        clickButton.MouseButton1Click:Fire()
+    end)
+    
     return {
         container = container,
         button = switchButton,
@@ -583,6 +658,110 @@ local invisibleSwitch = createSwitch(visualContent, UDim2.new(0, 0, 0, 0), "Invi
 local espSwitch = createSwitch(visualContent, UDim2.new(0, 0, 0, 54), "ESP", "See all players through walls with names and distance indicators.")
 local xraySwitch = createSwitch(visualContent, UDim2.new(0, 0, 0, 108), "X-Ray", "Makes all walls and parts translucent so you can see through them.")
 
+-- Fun Tab Switches
+local spinSwitch = createSwitch(funContent, UDim2.new(0, 0, 0, 0), "Spin", "Makes your character spin around continuously!")
+local bounceSwitch = createSwitch(funContent, UDim2.new(0, 0, 0, 54), "Bounce", "Bounces you off objects when you touch them!")
+
+-- Speed Slider
+local speedSliderContainer = Instance.new("Frame")
+speedSliderContainer.Size = UDim2.new(1, 0, 0, 60)
+speedSliderContainer.Position = UDim2.new(0, 0, 0, 118)
+speedSliderContainer.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+speedSliderContainer.BorderSizePixel = 0
+speedSliderContainer.Parent = funContent
+
+local speedSliderCorner = Instance.new("UICorner")
+speedSliderCorner.CornerRadius = UDim.new(0, 8)
+speedSliderCorner.Parent = speedSliderContainer
+
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(1, -20, 0, 20)
+speedLabel.Position = UDim2.new(0, 10, 0, 5)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Text = "Speed: 16"
+speedLabel.TextColor3 = Color3.fromRGB(220, 220, 240)
+speedLabel.Font = Enum.Font.GothamBold
+speedLabel.TextSize = 14
+speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+speedLabel.Parent = speedSliderContainer
+
+local speedSlider = Instance.new("Frame")
+speedSlider.Size = UDim2.new(1, -20, 0, 8)
+speedSlider.Position = UDim2.new(0, 10, 0, 35)
+speedSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+speedSlider.BorderSizePixel = 0
+speedSlider.Parent = speedSliderContainer
+
+local speedSliderCorner2 = Instance.new("UICorner")
+speedSliderCorner2.CornerRadius = UDim.new(0, 4)
+speedSliderCorner2.Parent = speedSlider
+
+local speedSliderFill = Instance.new("Frame")
+speedSliderFill.Size = UDim2.new(0, 0, 1, 0)
+speedSliderFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+speedSliderFill.BorderSizePixel = 0
+speedSliderFill.Parent = speedSlider
+
+local speedSliderFillCorner = Instance.new("UICorner")
+speedSliderFillCorner.CornerRadius = UDim.new(0, 4)
+speedSliderFillCorner.Parent = speedSliderFill
+
+local speedSliderButton = Instance.new("TextButton")
+speedSliderButton.Size = UDim2.new(1, 0, 1, 0)
+speedSliderButton.BackgroundTransparency = 1
+speedSliderButton.Text = ""
+speedSliderButton.Parent = speedSlider
+
+-- Jump Slider
+local jumpSliderContainer = Instance.new("Frame")
+jumpSliderContainer.Size = UDim2.new(1, 0, 0, 60)
+jumpSliderContainer.Position = UDim2.new(0, 0, 0, 188)
+jumpSliderContainer.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+jumpSliderContainer.BorderSizePixel = 0
+jumpSliderContainer.Parent = funContent
+
+local jumpSliderCorner = Instance.new("UICorner")
+jumpSliderCorner.CornerRadius = UDim.new(0, 8)
+jumpSliderCorner.Parent = jumpSliderContainer
+
+local jumpLabel = Instance.new("TextLabel")
+jumpLabel.Size = UDim2.new(1, -20, 0, 20)
+jumpLabel.Position = UDim2.new(0, 10, 0, 5)
+jumpLabel.BackgroundTransparency = 1
+jumpLabel.Text = "Jump Power: 50"
+jumpLabel.TextColor3 = Color3.fromRGB(220, 220, 240)
+jumpLabel.Font = Enum.Font.GothamBold
+jumpLabel.TextSize = 14
+jumpLabel.TextXAlignment = Enum.TextXAlignment.Left
+jumpLabel.Parent = jumpSliderContainer
+
+local jumpSlider = Instance.new("Frame")
+jumpSlider.Size = UDim2.new(1, -20, 0, 8)
+jumpSlider.Position = UDim2.new(0, 10, 0, 35)
+jumpSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+jumpSlider.BorderSizePixel = 0
+jumpSlider.Parent = jumpSliderContainer
+
+local jumpSliderCorner2 = Instance.new("UICorner")
+jumpSliderCorner2.CornerRadius = UDim.new(0, 4)
+jumpSliderCorner2.Parent = jumpSlider
+
+local jumpSliderFill = Instance.new("Frame")
+jumpSliderFill.Size = UDim2.new(0, 0, 1, 0)
+jumpSliderFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+jumpSliderFill.BorderSizePixel = 0
+jumpSliderFill.Parent = jumpSlider
+
+local jumpSliderFillCorner = Instance.new("UICorner")
+jumpSliderFillCorner.CornerRadius = UDim.new(0, 4)
+jumpSliderFillCorner.Parent = jumpSliderFill
+
+local jumpSliderButton = Instance.new("TextButton")
+jumpSliderButton.Size = UDim2.new(1, 0, 1, 0)
+jumpSliderButton.BackgroundTransparency = 1
+jumpSliderButton.Text = ""
+jumpSliderButton.Parent = jumpSlider
+
 -- Animation functions
 local function animateSwitch(switchData, enabled)
     local targetBgColor = enabled and Color3.fromRGB(100, 150, 255) or Color3.fromRGB(60, 60, 80)
@@ -605,17 +784,30 @@ local function switchTab(tabName)
     if tabName == "Player" then
         playerContent.Visible = true
         visualContent.Visible = false
+        funContent.Visible = false
         
         local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         TweenService:Create(playerTab, tweenInfo, {BackgroundColor3 = Color3.fromRGB(100, 150, 255)}):Play()
         TweenService:Create(visualTab, tweenInfo, {BackgroundColor3 = Color3.fromRGB(60, 60, 80)}):Play()
+        TweenService:Create(funTab, tweenInfo, {BackgroundColor3 = Color3.fromRGB(60, 60, 80)}):Play()
     elseif tabName == "Visual" then
         playerContent.Visible = false
         visualContent.Visible = true
+        funContent.Visible = false
         
         local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         TweenService:Create(playerTab, tweenInfo, {BackgroundColor3 = Color3.fromRGB(60, 60, 80)}):Play()
         TweenService:Create(visualTab, tweenInfo, {BackgroundColor3 = Color3.fromRGB(100, 150, 255)}):Play()
+        TweenService:Create(funTab, tweenInfo, {BackgroundColor3 = Color3.fromRGB(60, 60, 80)}):Play()
+    elseif tabName == "Fun" then
+        playerContent.Visible = false
+        visualContent.Visible = false
+        funContent.Visible = true
+        
+        local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        TweenService:Create(playerTab, tweenInfo, {BackgroundColor3 = Color3.fromRGB(60, 60, 80)}):Play()
+        TweenService:Create(visualTab, tweenInfo, {BackgroundColor3 = Color3.fromRGB(60, 60, 80)}):Play()
+        TweenService:Create(funTab, tweenInfo, {BackgroundColor3 = Color3.fromRGB(100, 150, 255)}):Play()
     end
 end
 
@@ -1015,6 +1207,117 @@ local function toggleXray()
     end
 end
 
+-- Spin Function
+local function toggleSpin()
+    spinEnabled = not spinEnabled
+    animateSwitch(spinSwitch, spinEnabled)
+    
+    if spinEnabled then
+        spinConnection = RunService.RenderStepped:Connect(function()
+            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                player.Character.HumanoidRootPart.CFrame = player.Character.HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(10), 0)
+            end
+        end)
+    else
+        if spinConnection then
+            spinConnection:Disconnect()
+            spinConnection = nil
+        end
+    end
+end
+
+-- Bounce Function
+local function toggleBounce()
+    bounceEnabled = not bounceEnabled
+    animateSwitch(bounceSwitch, bounceEnabled)
+    
+    if bounceEnabled then
+        bounceConnection = RunService.Heartbeat:Connect(function()
+            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local hrp = player.Character.HumanoidRootPart
+                
+                -- Check for collisions
+                local ray = Ray.new(hrp.Position, hrp.CFrame.LookVector * 3)
+                local hit, position = workspace:FindPartOnRay(ray, player.Character)
+                
+                if hit then
+                    -- Bounce back
+                    hrp.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity + Vector3.new(0, 50, 0) - (hrp.CFrame.LookVector * 20)
+                end
+            end
+        end)
+    else
+        if bounceConnection then
+            bounceConnection:Disconnect()
+            bounceConnection = nil
+        end
+    end
+end
+
+-- Speed Slider Function
+local speedDragging = false
+speedSliderButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        speedDragging = true
+    end
+end)
+
+speedSliderButton.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        speedDragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if speedDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local mousePos = UserInputService:GetMouseLocation().X
+        local sliderPos = speedSlider.AbsolutePosition.X
+        local sliderSize = speedSlider.AbsoluteSize.X
+        
+        local relativePos = math.clamp((mousePos - sliderPos) / sliderSize, 0, 1)
+        speedBoost = math.floor(16 + (relativePos * 84)) -- 16 to 100
+        
+        speedLabel.Text = "Speed: " .. speedBoost
+        speedSliderFill.Size = UDim2.new(relativePos, 0, 1, 0)
+        
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            player.Character.Humanoid.WalkSpeed = speedBoost
+        end
+    end
+end)
+
+-- Jump Slider Function
+local jumpDragging = false
+jumpSliderButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        jumpDragging = true
+    end
+end)
+
+jumpSliderButton.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        jumpDragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if jumpDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local mousePos = UserInputService:GetMouseLocation().X
+        local sliderPos = jumpSlider.AbsolutePosition.X
+        local sliderSize = jumpSlider.AbsoluteSize.X
+        
+        local relativePos = math.clamp((mousePos - sliderPos) / sliderSize, 0, 1)
+        jumpBoost = math.floor(50 + (relativePos * 150)) -- 50 to 200
+        
+        jumpLabel.Text = "Jump Power: " .. jumpBoost
+        jumpSliderFill.Size = UDim2.new(relativePos, 0, 1, 0)
+        
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            player.Character.Humanoid.JumpPower = jumpBoost
+        end
+    end
+end)
+
 local function toggleAntiKnockback()
     antiKnockbackEnabled = not antiKnockbackEnabled
     animateSwitch(antiKnockbackSwitch, antiKnockbackEnabled)
@@ -1118,6 +1421,10 @@ visualTab.MouseButton1Click:Connect(function()
     switchTab("Visual")
 end)
 
+funTab.MouseButton1Click:Connect(function()
+    switchTab("Fun")
+end)
+
 lockOnSwitch.clickButton.MouseButton1Click:Connect(function()
     lockEnabled = not lockEnabled
     animateSwitch(lockOnSwitch, lockEnabled)
@@ -1155,6 +1462,14 @@ end)
 
 antiKnockbackSwitch.clickButton.MouseButton1Click:Connect(function()
     toggleAntiKnockback()
+end)
+
+spinSwitch.clickButton.MouseButton1Click:Connect(function()
+    toggleSpin()
+end)
+
+bounceSwitch.clickButton.MouseButton1Click:Connect(function()
+    toggleBounce()
 end)
 
 resetIgnoredButton.MouseButton1Click:Connect(function()
@@ -1204,6 +1519,12 @@ end)
 
 -- Character Respawn
 player.CharacterAdded:Connect(function(character)
+    -- Apply speed boost
+    task.wait(0.1)
+    local humanoid = character:WaitForChild("Humanoid")
+    humanoid.WalkSpeed = speedBoost
+    humanoid.JumpPower = jumpBoost
+    
     if noclipEnabled then
         task.wait(0.1)
         if noclipConnection then
@@ -1215,6 +1536,36 @@ player.CharacterAdded:Connect(function(character)
                     if part:IsA("BasePart") and part.CanCollide then
                         part.CanCollide = false
                     end
+                end
+            end
+        end)
+    end
+    
+    if spinEnabled then
+        task.wait(0.1)
+        if spinConnection then
+            spinConnection:Disconnect()
+        end
+        spinConnection = RunService.RenderStepped:Connect(function()
+            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                player.Character.HumanoidRootPart.CFrame = player.Character.HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(10), 0)
+            end
+        end)
+    end
+    
+    if bounceEnabled then
+        task.wait(0.1)
+        if bounceConnection then
+            bounceConnection:Disconnect()
+        end
+        bounceConnection = RunService.Heartbeat:Connect(function()
+            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local hrp = player.Character.HumanoidRootPart
+                local ray = Ray.new(hrp.Position, hrp.CFrame.LookVector * 3)
+                local hit, position = workspace:FindPartOnRay(ray, player.Character)
+                
+                if hit then
+                    hrp.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity + Vector3.new(0, 50, 0) - (hrp.CFrame.LookVector * 20)
                 end
             end
         end)
