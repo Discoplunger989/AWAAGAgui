@@ -26,6 +26,8 @@ local airJumpEnabled = false
 local invisibleEnabled = false
 local espEnabled = false
 local espObjects = {}
+local xrayEnabled = false
+local xrayParts = {}
 local antiKnockbackEnabled = false
 local antiKnockbackConnection = nil
 local currentTab = "Player"
@@ -579,6 +581,7 @@ end)
 -- Visual switches
 local invisibleSwitch = createSwitch(visualContent, UDim2.new(0, 0, 0, 0), "Invisible", "Makes your character invisible on YOUR screen only. Other players can still see you!")
 local espSwitch = createSwitch(visualContent, UDim2.new(0, 0, 0, 54), "ESP", "See all players through walls with names and distance indicators.")
+local xraySwitch = createSwitch(visualContent, UDim2.new(0, 0, 0, 108), "X-Ray", "Makes all walls and parts translucent so you can see through them.")
 
 -- Animation functions
 local function animateSwitch(switchData, enabled)
@@ -955,6 +958,63 @@ local function toggleESP()
     end
 end
 
+-- X-Ray Functions
+local function toggleXray()
+    xrayEnabled = not xrayEnabled
+    animateSwitch(xraySwitch, xrayEnabled)
+    
+    if xrayEnabled then
+        -- Make all parts in workspace translucent
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and not obj:IsDescendantOf(player.Character) then
+                -- Check if it's not a player character part
+                local isPlayerPart = false
+                for _, plr in pairs(Players:GetPlayers()) do
+                    if plr.Character and obj:IsDescendantOf(plr.Character) then
+                        isPlayerPart = true
+                        break
+                    end
+                end
+                
+                if not isPlayerPart then
+                    -- Store original transparency
+                    xrayParts[obj] = obj.Transparency
+                    obj.Transparency = 0.7
+                end
+            end
+        end
+        
+        -- Handle new parts being added
+        workspace.DescendantAdded:Connect(function(obj)
+            if xrayEnabled and obj:IsA("BasePart") then
+                task.wait(0.1)
+                if not obj:IsDescendantOf(player.Character) then
+                    local isPlayerPart = false
+                    for _, plr in pairs(Players:GetPlayers()) do
+                        if plr.Character and obj:IsDescendantOf(plr.Character) then
+                            isPlayerPart = true
+                            break
+                        end
+                    end
+                    
+                    if not isPlayerPart then
+                        xrayParts[obj] = obj.Transparency
+                        obj.Transparency = 0.7
+                    end
+                end
+            end
+        end)
+    else
+        -- Restore original transparencies
+        for obj, originalTransparency in pairs(xrayParts) do
+            if obj and obj.Parent then
+                obj.Transparency = originalTransparency
+            end
+        end
+        xrayParts = {}
+    end
+end
+
 local function toggleAntiKnockback()
     antiKnockbackEnabled = not antiKnockbackEnabled
     animateSwitch(antiKnockbackSwitch, antiKnockbackEnabled)
@@ -1006,6 +1066,16 @@ local function unloadGUI()
     
     for targetPlayer, _ in pairs(espObjects) do
         removeESP(targetPlayer)
+    end
+    
+    -- Restore X-Ray transparencies
+    if xrayEnabled then
+        for obj, originalTransparency in pairs(xrayParts) do
+            if obj and obj.Parent then
+                obj.Transparency = originalTransparency
+            end
+        end
+        xrayParts = {}
     end
     
     if invisibleEnabled and player.Character then
@@ -1077,6 +1147,10 @@ end)
 
 espSwitch.clickButton.MouseButton1Click:Connect(function()
     toggleESP()
+end)
+
+xraySwitch.clickButton.MouseButton1Click:Connect(function()
+    toggleXray()
 end)
 
 antiKnockbackSwitch.clickButton.MouseButton1Click:Connect(function()
